@@ -32,6 +32,7 @@ class SimConfig:
     goal_score: int
     mode: str = "discard"  # discard | mixed
     restart_action: str = "auto"  # auto | discard | reset
+    persist_slot_unlocks_on_reset: bool = True
     attrs: Optional[List[str]] = None
     probs: Optional[List[float]] = None
 
@@ -108,23 +109,35 @@ def simulate_one_success(
     tear_coins = 0.0
 
     state = ItemState()
+    slot5_unlocked = False
+    slot6_unlocked = False
+    need_new_item = True
 
     while True:
         attempts += 1
-        diamonds += cost_cfg.diamonds_per_item
-        dcoin = cost_cfg.diamonds_per_item * cost_cfg.diamond_price
-        coins += dcoin
-        diamond_coins += dcoin
+        if need_new_item:
+            diamonds += cost_cfg.diamonds_per_item
+            dcoin = cost_cfg.diamonds_per_item * cost_cfg.diamond_price
+            coins += dcoin
+            diamond_coins += dcoin
+            slot5_unlocked = False
+            slot6_unlocked = False
         state.reset()
 
         restart = False
         for slot in range(1, 7):
             coins += cost_cfg.enhance_coin
             enhance_coins += cost_cfg.enhance_coin
-            if slot >= 5:
+            if slot == 5 and not slot5_unlocked:
                 tears += 1
                 coins += cost_cfg.tears_price
                 tear_coins += cost_cfg.tears_price
+                slot5_unlocked = True
+            if slot == 6 and not slot6_unlocked:
+                tears += 1
+                coins += cost_cfg.tears_price
+                tear_coins += cost_cfg.tears_price
+                slot6_unlocked = True
 
             attr, value = _draw_attr_and_value(rng, attrs, probs)
             state.add_roll(slot, attr, value)
@@ -156,6 +169,12 @@ def simulate_one_success(
         if restart_action == "reset":
             coins += cost_cfg.clear_coin
             clear_coins += cost_cfg.clear_coin
+            need_new_item = False
+            if not sim_cfg.persist_slot_unlocks_on_reset:
+                slot5_unlocked = False
+                slot6_unlocked = False
+        else:
+            need_new_item = True
 
 
 def monte_carlo_evaluate(

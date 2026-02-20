@@ -23,6 +23,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--N", type=int, default=200000, help="Monte Carlo runs for single-strategy evaluation")
     p.add_argument("--mode", choices=["discard", "mixed"], default="discard", help="Restart mode")
     p.add_argument("--restart-action", choices=["auto", "discard", "reset"], default="auto")
+    p.add_argument(
+        "--persist-slot-unlocks-on-reset",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="When reset is used, keep slot5/slot6 unlock state on the same item (default: on)",
+    )
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--probabilities", type=str, default="", help="26 comma-separated probabilities")
     p.add_argument("--probabilities-envs", type=str, default="", help="Multiple envs split by ';'")
@@ -162,7 +168,13 @@ def main() -> None:
 
     for run_idx, (g, prob_text) in enumerate(itertools.product(g_values, env_probs)):
         probs = parse_probability_vector(prob_text, attr_count=26)
-        sim_cfg = SimConfig(goal_score=g, mode=args.mode, restart_action=args.restart_action, probs=probs)
+        sim_cfg = SimConfig(
+            goal_score=g,
+            mode=args.mode,
+            restart_action=args.restart_action,
+            persist_slot_unlocks_on_reset=args.persist_slot_unlocks_on_reset,
+            probs=probs,
+        )
         mc_progress_cb = make_mc_progress(args.progress, args.N)
         single_result = monte_carlo_evaluate(
             single_strategy,
@@ -228,7 +240,7 @@ def main() -> None:
     out_dir = Path(args.out_dir) / timestamp
     report_path = write_report(
         out_dir,
-        run_config={"G": args.G, "N": args.N, "mode": args.mode, "search": args.search, "progress": args.progress},
+        run_config={"G": args.G, "N": args.N, "mode": args.mode, "search": args.search, "progress": args.progress, "persist_slot_unlocks_on_reset": args.persist_slot_unlocks_on_reset},
         results=all_results,
     )
     print(f"\nReport folder: {out_dir}")

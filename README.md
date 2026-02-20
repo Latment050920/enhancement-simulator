@@ -15,6 +15,7 @@
 - 两种模式：
   - `discard`: 仅允许丢弃重做
   - `mixed`: 允许丢弃+洗点重置（`--restart-action auto|discard|reset`）
+  - reset 默认保留同一件装备的 5/6 槽解锁状态（可用 `--no-persist-slot-unlocks-on-reset` 关闭）
 - 两阶段搜索：先粗筛，再大样本精算 Top 策略。
 - 运行进度反馈：`--progress` 开启后显示 Monte Carlo 和 Search 进度（若有 `rich` 优先使用 rich progress）。
 - 每次运行自动生成报告目录：`outputs/YYYYMMDD_HHMMSS/`
@@ -42,6 +43,7 @@ python main.py --G 14 --mode discard --N 300000 --search --progress
 - `--top-k/--top-n`: 粗筛保留 K，最终输出前 N
 - `--compare-example`: 一键对比示例策略
 - `--similar-threshold-pct`: “差不多”判定阈值（默认 5%）
+- `--persist-slot-unlocks-on-reset / --no-persist-slot-unlocks-on-reset`: 控制 reset 后是否保留 5/6 槽解锁（默认保留）
 - `--progress`: 开启运行进度
 - `--progress-every`: 进度刷新批大小（默认 5000）
 
