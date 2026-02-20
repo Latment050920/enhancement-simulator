@@ -2,13 +2,9 @@ from __future__ import annotations
 
 import random
 import statistics
+import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional
-
-try:
-    import numpy as np  # type: ignore
-except Exception:  # pragma: no cover
-    np = None
+from typing import Callable, Dict, List, Optional
 
 from strategy import ItemState, ThresholdStrategy
 
@@ -18,6 +14,8 @@ DEFAULT_ATTRS: List[str] = [
     "physical",
     "true",
 ] + [f"other_{i}" for i in range(1, 23)]
+
+ProgressFn = Callable[[Dict[str, float]], None]
 
 
 @dataclass(frozen=True)
@@ -50,6 +48,10 @@ class EvalResult:
     std_err_coins: float
     ci95_coins_low: float
     ci95_coins_high: float
+    enhance_coins: float
+    clear_coins: float
+    diamond_coins: float
+    tear_coins: float
 
     def to_dict(self) -> Dict[str, float]:
         return {
@@ -63,6 +65,10 @@ class EvalResult:
             "std_err_coins": self.std_err_coins,
             "ci95_coins_low": self.ci95_coins_low,
             "ci95_coins_high": self.ci95_coins_high,
+            "enhance_coins": self.enhance_coins,
+            "clear_coins": self.clear_coins,
+            "diamond_coins": self.diamond_coins,
+            "tear_coins": self.tear_coins,
         }
 
 
@@ -96,21 +102,29 @@ def simulate_one_success(
     diamonds = 0.0
     tears = 0.0
     attempts = 0
+    enhance_coins = 0.0
+    clear_coins = 0.0
+    diamond_coins = 0.0
+    tear_coins = 0.0
 
     state = ItemState()
 
     while True:
         attempts += 1
         diamonds += cost_cfg.diamonds_per_item
-        coins += cost_cfg.diamonds_per_item * cost_cfg.diamond_price
+        dcoin = cost_cfg.diamonds_per_item * cost_cfg.diamond_price
+        coins += dcoin
+        diamond_coins += dcoin
         state.reset()
 
         restart = False
         for slot in range(1, 7):
             coins += cost_cfg.enhance_coin
+            enhance_coins += cost_cfg.enhance_coin
             if slot >= 5:
                 tears += 1
                 coins += cost_cfg.tears_price
+                tear_coins += cost_cfg.tears_price
 
             attr, value = _draw_attr_and_value(rng, attrs, probs)
             state.add_roll(slot, attr, value)
@@ -133,11 +147,15 @@ def simulate_one_success(
                 "diamonds": diamonds,
                 "tears": tears,
                 "attempts": attempts,
-                "success": 1,
+                "enhance_coins": enhance_coins,
+                "clear_coins": clear_coins,
+                "diamond_coins": diamond_coins,
+                "tear_coins": tear_coins,
             }
 
         if restart_action == "reset":
             coins += cost_cfg.clear_coin
+            clear_coins += cost_cfg.clear_coin
 
 
 def monte_carlo_evaluate(
@@ -146,6 +164,9 @@ def monte_carlo_evaluate(
     cost_cfg: CostConfig,
     n_runs: int,
     seed: int = 42,
+    progress: bool = False,
+    progress_every: int = 5000,
+    progress_cb: Optional[ProgressFn] = None,
 ) -> EvalResult:
     rng = random.Random(seed)
 
@@ -153,13 +174,40 @@ def monte_carlo_evaluate(
     diamonds: List[float] = []
     tears: List[float] = []
     attempts: List[float] = []
+    enhance_all: List[float] = []
+    clear_all: List[float] = []
+    diamond_all: List[float] = []
+    tear_all: List[float] = []
+    start = time.time()
 
-    for _ in range(n_runs):
+    for i in range(n_runs):
         out = simulate_one_success(strategy, sim_cfg, cost_cfg, rng)
         coins.append(out["coins"])
         diamonds.append(out["diamonds"])
         tears.append(out["tears"])
         attempts.append(out["attempts"])
+        enhance_all.append(out["enhance_coins"])
+        clear_all.append(out["clear_coins"])
+        diamond_all.append(out["diamond_coins"])
+        tear_all.append(out["tear_coins"])
+
+        done = i + 1
+        if progress and (done % progress_every == 0 or done == n_runs):
+            elapsed = time.time() - start
+            rate = done / elapsed if elapsed > 0 else 0.0
+            eta = (n_runs - done) / rate if rate > 0 else 0.0
+            est_success = statistics.fmean([1.0 / x for x in attempts])
+            payload = {
+                "done": float(done),
+                "total": float(n_runs),
+                "percent": done / n_runs * 100.0,
+                "elapsed_sec": elapsed,
+                "eta_sec": eta,
+                "success_count": float(done),
+                "success_rate_est": est_success,
+            }
+            if progress_cb:
+                progress_cb(payload)
 
     expected_coins = statistics.fmean(coins)
     std_err = statistics.stdev(coins) / (n_runs ** 0.5) if n_runs > 1 else 0.0
@@ -176,6 +224,10 @@ def monte_carlo_evaluate(
         std_err_coins=std_err,
         ci95_coins_low=expected_coins - ci_delta,
         ci95_coins_high=expected_coins + ci_delta,
+        enhance_coins=statistics.fmean(enhance_all),
+        clear_coins=statistics.fmean(clear_all),
+        diamond_coins=statistics.fmean(diamond_all),
+        tear_coins=statistics.fmean(tear_all),
     )
 
 
